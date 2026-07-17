@@ -52,30 +52,52 @@ CREATE TABLE IF NOT EXISTS comments (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ── REAZIONI ────────────────────────────────────────────────────
+-- Feedback sui messaggi (👍 utile, ✅ confermo, 🔧 risolto) e
+-- ringraziamenti a livello segnalazione (👏 grazie, comment_id NULL).
+-- Se hai già un database esistente, esegui solo questa sezione
+-- (tabella + indici + RLS in fondo al file).
+CREATE TABLE IF NOT EXISTS reactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  report_id UUID NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+  comment_id UUID REFERENCES comments(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id),
+  user_name TEXT,
+  type TEXT NOT NULL CHECK (type IN ('utile', 'confermo', 'risolto', 'grazie')),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ── INDICI ──────────────────────────────────────────────────────
 CREATE INDEX idx_reports_status ON reports(status);
 CREATE INDEX idx_reports_severity ON reports(severity);
 CREATE INDEX idx_reports_assigned ON reports(assigned_to);
 CREATE INDEX idx_reports_created ON reports(created_at DESC);
 CREATE INDEX idx_comments_report ON comments(report_id);
+CREATE INDEX idx_reactions_report ON reactions(report_id);
+-- Una sola reazione per utente/tipo su ogni messaggio (o segnalazione)
+CREATE UNIQUE INDEX idx_reactions_unique_comment ON reactions(comment_id, user_id, type) WHERE comment_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_reactions_unique_report ON reactions(report_id, user_id, type) WHERE comment_id IS NULL;
 
 -- ── ROW LEVEL SECURITY ─────────────────────────────────────────
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE machines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reactions ENABLE ROW LEVEL SECURITY;
 
 -- Policy: tutti gli utenti autenticati possono leggere
 CREATE POLICY "Users can read all" ON users FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Reports can read all" ON reports FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Comments can read all" ON comments FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Machines can read all" ON machines FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Reactions can read all" ON reactions FOR SELECT TO authenticated USING (true);
 
 -- Policy: inserimento
 CREATE POLICY "Users can insert own" ON users FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "Users can create reports" ON reports FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "Users can add comments" ON comments FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "Admins can create machines" ON machines FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Users can add reactions" ON reactions FOR INSERT TO authenticated WITH CHECK (true);
 
 -- Policy: aggiornamento
 CREATE POLICY "Admins and techs can update reports" ON reports FOR UPDATE TO authenticated USING (true);
@@ -83,6 +105,7 @@ CREATE POLICY "Admins can update machines" ON machines FOR UPDATE TO authenticat
 
 -- Policy: eliminazione (solo admin)
 CREATE POLICY "Admins can delete users" ON users FOR DELETE TO authenticated USING (true);
+CREATE POLICY "Users can remove reactions" ON reactions FOR DELETE TO authenticated USING (true);
 CREATE POLICY "Admins can delete machines" ON machines FOR DELETE TO authenticated USING (true);
 
 -- ── STORAGE BUCKET ──────────────────────────────────────────────

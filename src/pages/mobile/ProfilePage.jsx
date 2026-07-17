@@ -1,12 +1,18 @@
+import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { ROLES } from '../../lib/constants'
 import { Button } from '../../components/ui'
 import { LogOut, User, Mail, Shield } from 'lucide-react'
-import { isSupabaseConfigured } from '../../lib/supabase'
+import { db, isSupabaseConfigured } from '../../lib/supabase'
 
 export default function ProfilePage() {
   const { user, logout } = useAuth()
   const role = ROLES[user.role] || ROLES.operatore
+  const [thanks, setThanks] = useState(0)
+
+  useEffect(() => {
+    if (user.role === 'tecnico') db.getThanksReceived(user.id).then(setThanks)
+  }, [user.id, user.role])
 
   return (
     <div className="p-4 space-y-6">
@@ -18,6 +24,18 @@ export default function ProfilePage() {
         <h2 className="text-lg font-bold text-white">{user.name}</h2>
         <p className="text-sm text-gray-400">{role.label}</p>
       </div>
+
+      {/* Grazie ricevuti (solo tecnici) */}
+      {user.role === 'tecnico' && (
+        <div className="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4">
+          <span className="text-2xl">👏</span>
+          <div>
+            <p className="text-[10px] text-emerald-400/80 uppercase tracking-wider">Grazie ricevuti</p>
+            <p className="text-lg font-bold text-white">{thanks}</p>
+            <p className="text-[10px] text-gray-500">dalle segnalazioni che hai risolto</p>
+          </div>
+        </div>
+      )}
 
       {/* Info Cards */}
       <div className="space-y-2">

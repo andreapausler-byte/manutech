@@ -18,6 +18,14 @@ export const SEVERITY = {
   critica: { label: 'Critica', color: '#ef4444', bg: '#ef444422' },
 }
 
+// Reazioni sui messaggi: feedback con significato operativo,
+// non semplici like. 'grazie' è riservato al livello segnalazione.
+export const REACTIONS = {
+  utile: { emoji: '👍', label: 'Utile' },
+  confermo: { emoji: '✅', label: 'Confermo il problema' },
+  risolto: { emoji: '🔧', label: 'Risolto per me' },
+}
+
 export const formatDate = (dateStr) => {
   if (!dateStr) return ''
   const d = new Date(dateStr)
