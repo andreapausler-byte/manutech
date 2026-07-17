@@ -217,6 +217,59 @@ export const db = {
     return newComment
   },
 
+  // ─── REACTIONS ───
+  async getReactions(reportId) {
+    if (supabase) {
+      const { data } = await supabase.from('reactions').select('*').eq('report_id', reportId).order('created_at', { ascending: true })
+      return data || []
+    }
+    const report = getStore(KEYS.reports).find(r => r.id === reportId)
+    return report?.reactions || []
+  },
+
+  async addReaction(reportId, reaction) {
+    if (supabase) {
+      const { data, error } = await supabase.from('reactions').insert({ ...reaction, report_id: reportId }).select().single()
+      if (error) throw error
+      return data
+    }
+    const reports = getStore(KEYS.reports)
+    const idx = reports.findIndex(r => r.id === reportId)
+    if (idx === -1) throw new Error('Segnalazione non trovata')
+    const newReaction = { ...reaction, id: `rea-${Date.now()}`, report_id: reportId, created_at: new Date().toISOString() }
+    reports[idx].reactions = [...(reports[idx].reactions || []), newReaction]
+    setStore(KEYS.reports, reports)
+    return newReaction
+  },
+
+  async removeReaction(id) {
+    if (supabase) {
+      const { error } = await supabase.from('reactions').delete().eq('id', id)
+      if (error) throw error
+      return
+    }
+    const reports = getStore(KEYS.reports)
+    const idx = reports.findIndex(r => r.reactions?.some(x => x.id === id))
+    if (idx === -1) return
+    reports[idx].reactions = reports[idx].reactions.filter(x => x.id !== id)
+    setStore(KEYS.reports, reports)
+  },
+
+  // Totale 👏 ricevuti sulle segnalazioni assegnate all'utente
+  async getThanksReceived(userId) {
+    if (supabase) {
+      const { data } = await supabase.from('reactions')
+        .select('id, reports!inner(assigned_to)')
+        .eq('type', 'grazie')
+        .is('comment_id', null)
+        .eq('reports.assigned_to', userId)
+      return data?.length || 0
+    }
+    return getStore(KEYS.reports)
+      .filter(r => r.assigned_to === userId)
+      .reduce((n, r) => n + (r.reactions || []).filter(x => x.type === 'grazie' && !x.comment_id).length, 0)
+  },
+
   // ─── MACHINES ───
   async getMachines() {
     if (supabase) {

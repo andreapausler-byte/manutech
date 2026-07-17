@@ -1,18 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { db } from '../../lib/supabase'
 import { STATUS, SEVERITY, formatDate } from '../../lib/constants'
 import { Badge, Button } from '../ui'
-import { ArrowLeft, MessageCircle, Send, Camera, Video, Mic, User } from 'lucide-react'
+import { ArrowLeft, Video, Mic } from 'lucide-react'
+import CommentSection from './CommentSection'
 
 export default function ReportDetail({ report: initialReport, user, onBack }) {
   const [report, setReport] = useState(initialReport)
-  const [comments, setComments] = useState([])
-  const [newComment, setNewComment] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    db.getComments(report.id).then(setComments)
-  }, [report.id])
 
   const status = STATUS[report.status] || STATUS.aperta
   const severity = SEVERITY[report.severity] || SEVERITY.media
@@ -22,20 +16,6 @@ export default function ReportDetail({ report: initialReport, user, onBack }) {
   const updateStatus = async (newStatus) => {
     const updated = await db.updateReport(report.id, { status: newStatus })
     setReport(r => ({ ...r, ...updated }))
-  }
-
-  const addComment = async () => {
-    if (!newComment.trim()) return
-    setLoading(true)
-    const comment = await db.addComment(report.id, {
-      text: newComment.trim(),
-      user_id: user.id,
-      user_name: user.name,
-      user_role: user.role,
-    })
-    setComments(c => [...c, comment])
-    setNewComment('')
-    setLoading(false)
   }
 
   return (
@@ -110,49 +90,8 @@ export default function ReportDetail({ report: initialReport, user, onBack }) {
           )}
         </div>
 
-        {/* Comments */}
-        <div className="border-t border-gray-800 p-4">
-          <h3 className="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-3 flex items-center gap-1.5">
-            <MessageCircle size={14} /> Commenti ({comments.length})
-          </h3>
-
-          <div className="space-y-3">
-            {comments.map(c => (
-              <div key={c.id} className={`flex gap-2.5 ${c.user_id === user.id ? 'flex-row-reverse' : ''}`}>
-                <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center shrink-0">
-                  <User size={14} className="text-gray-400" />
-                </div>
-                <div className={`max-w-[75%] ${c.user_id === user.id ? 'bg-blue-600/20 border-blue-500/30' : 'bg-gray-800 border-gray-700'} border rounded-xl p-3`}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-semibold text-white">{c.user_name || 'Utente'}</span>
-                    <span className="text-[10px] text-gray-500">{c.user_role}</span>
-                  </div>
-                  <p className="text-sm text-gray-300">{c.text}</p>
-                  <p className="text-[10px] text-gray-500 mt-1">{formatDate(c.created_at)}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Comment Input */}
-      <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 p-3 flex gap-2">
-        <input
-          type="text"
-          value={newComment}
-          onChange={e => setNewComment(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && addComment()}
-          placeholder="Scrivi un commento..."
-          className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-        />
-        <button
-          onClick={addComment}
-          disabled={!newComment.trim() || loading}
-          className="p-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-30 rounded-xl transition-colors"
-        >
-          <Send size={18} className="text-white" />
-        </button>
+        {/* Comments + Reactions */}
+        <CommentSection report={report} user={user} variant="page" />
       </div>
     </div>
   )

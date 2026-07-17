@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react'
 import { db } from '../../lib/supabase'
+import { useAuth } from '../../contexts/AuthContext'
 import { STATUS, SEVERITY, formatDate } from '../../lib/constants'
 import { Badge, Button, Modal, Input, Textarea, Select, EmptyState, Spinner } from '../../components/ui'
 import MediaCapture from '../../components/media/MediaCapture'
+import CommentSection from '../../components/reports/CommentSection'
 import { Plus, Search, Filter, Eye, UserCheck } from 'lucide-react'
 
 export default function AdminReports() {
+  const { user } = useAuth()
   const [reports, setReports] = useState([])
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -266,6 +269,9 @@ export default function AdminReports() {
                 </div>
               </div>
             )}
+
+            {/* Comments + Reactions */}
+            <CommentSection report={selected} user={user} variant="modal" />
           </div>
         )}
       </Modal>
