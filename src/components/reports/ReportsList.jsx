@@ -3,18 +3,20 @@ import { db } from '../../lib/supabase'
 import { STATUS, SEVERITY, timeAgo } from '../../lib/constants'
 import { Badge, EmptyState, Spinner } from '../ui'
 import { Search, Filter, AlertTriangle } from 'lucide-react'
+import ActivityChips from './ActivityChips'
 
 export default function ReportsList({ user, onSelectReport }) {
   const [reports, setReports] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
+  const [onlyUnread, setOnlyUnread] = useState(false)
 
   const load = async () => {
     setLoading(true)
     const filters = {}
     if (filterStatus) filters.status = filterStatus
-    const data = await db.getReports(filters)
+    const data = await db.getReports(filters, user?.id)
     setReports(data)
     setLoading(false)
   }
@@ -22,10 +24,15 @@ export default function ReportsList({ user, onSelectReport }) {
   useEffect(() => { load() }, [filterStatus])
 
   const filtered = reports.filter(r => {
+    if (onlyUnread && !(r.activity?.unread_count > 0)) return false
     if (!search) return true
     const q = search.toLowerCase()
     return r.title?.toLowerCase().includes(q) || r.machine?.toLowerCase().includes(q) || r.description?.toLowerCase().includes(q)
   })
+  // A parità di gruppo resta l'ordine per data: prima chi ha novità da leggere
+  const sorted = [...filtered].sort((a, b) =>
+    (b.activity?.unread_count > 0 ? 1 : 0) - (a.activity?.unread_count > 0 ? 1 : 0)
+  )
 
   return (
     <div className="p-4 space-y-4">
@@ -51,6 +58,14 @@ export default function ReportsList({ user, onSelectReport }) {
         >
           Tutte
         </button>
+        <button
+          onClick={() => setOnlyUnread(v => !v)}
+          className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+            onlyUnread ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
+          }`}
+        >
+          💬 Con novità
+        </button>
         {Object.entries(STATUS).map(([key, { label, color }]) => (
           <button
             key={key}
@@ -70,7 +85,7 @@ export default function ReportsList({ user, onSelectReport }) {
         <EmptyState icon="📋" title="Nessuna segnalazione" subtitle="Le segnalazioni appariranno qui" />
       ) : (
         <div className="space-y-2">
-          {filtered.map(report => {
+          {sorted.map(report => {
             const status = STATUS[report.status] || STATUS.aperta
             const severity = SEVERITY[report.severity] || SEVERITY.media
             return (
@@ -87,8 +102,9 @@ export default function ReportsList({ user, onSelectReport }) {
                   {report.machine && <span>🏭 {report.machine}</span>}
                   <span>•</span>
                   <Badge {...severity} />
-                  <span className="ml-auto">{timeAgo(report.created_at)}</span>
+                  <span className="ml-auto">{timeAgo(report.activity?.last_comment_at || report.created_at)}</span>
                 </div>
+                <ActivityChips activity={report.activity} className="mt-2" />
                 {report.media?.length > 0 && (
                   <div className="flex gap-1 mt-2">
                     {report.media.slice(0, 4).map((m, i) => (

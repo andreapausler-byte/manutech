@@ -3,17 +3,18 @@ import { db } from '../../lib/supabase'
 import { STATUS, SEVERITY, timeAgo } from '../../lib/constants'
 import { Badge } from '../../components/ui'
 import { AlertTriangle, CheckCircle, Clock, Wrench } from 'lucide-react'
+import ActivityChips from '../../components/reports/ActivityChips'
 
 export default function MobileDashboard({ user, onViewReport }) {
   const [reports, setReports] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    db.getReports().then(data => {
+    db.getReports({}, user?.id).then(data => {
       setReports(data)
       setLoading(false)
     })
-  }, [])
+  }, [user?.id])
 
   const stats = {
     total: reports.length,
@@ -76,8 +77,9 @@ export default function MobileDashboard({ user, onViewReport }) {
                   </div>
                   <div className="flex items-center gap-2 text-xs text-gray-500">
                     {report.machine && <span>🏭 {report.machine}</span>}
-                    <span className="ml-auto">{timeAgo(report.created_at)}</span>
+                    <span className="ml-auto">{timeAgo(report.activity?.last_comment_at || report.created_at)}</span>
                   </div>
+                  <ActivityChips activity={report.activity} compact className="mt-2" />
                 </button>
               )
             })}

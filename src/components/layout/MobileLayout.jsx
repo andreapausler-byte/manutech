@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { db } from '../../lib/supabase'
 import { Home, ClipboardList, Plus, User, LogOut } from 'lucide-react'
 import ReportsList from '../reports/ReportsList'
 import NewReport from '../reports/NewReport'
@@ -18,6 +19,13 @@ export default function MobileLayout() {
   const [tab, setTab] = useState('home')
   const [screen, setScreen] = useState(null) // 'new-report', 'report-detail'
   const [selectedReport, setSelectedReport] = useState(null)
+  const [unreadTotal, setUnreadTotal] = useState(0)
+
+  // Aggiornato al mount e ogni volta che si torna dal dettaglio,
+  // dove i messaggi appena letti azzerano il conteggio
+  useEffect(() => {
+    if (screen === null) db.getUnreadTotal(user?.id).then(setUnreadTotal)
+  }, [screen, user?.id])
 
   const openReport = (report) => {
     setSelectedReport(report)
@@ -94,7 +102,14 @@ export default function MobileLayout() {
                 tab === id ? 'text-blue-400' : 'text-gray-500 hover:text-gray-300'
               }`}
             >
-              <Icon size={20} />
+              <div className="relative">
+                <Icon size={20} />
+                {id === 'reports' && unreadTotal > 0 && (
+                  <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 px-1 bg-blue-600 rounded-full text-[9px] font-bold text-white flex items-center justify-center">
+                    {unreadTotal > 99 ? '99+' : unreadTotal}
+                  </span>
+                )}
+              </div>
               <span className="text-[10px] font-medium">{label}</span>
             </button>
           ))}

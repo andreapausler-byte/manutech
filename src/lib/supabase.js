@@ -28,6 +28,7 @@ const KEYS = {
   machines: 'manutech_machines',
   session: 'manutech_session',
   comments: 'manutech_comments',
+  reads: 'manutech_reads',
 }
 
 function getStore(key) {
@@ -53,6 +54,56 @@ export function ensureDefaultAdmin() {
     })
     setStore(KEYS.users, users)
   }
+}
+
+// ── Attività per le liste ────────────────────────────────
+// Arricchisce ogni report con `activity`: numero messaggi, non letti
+// (commenti altrui dopo last_read_at) e feedback sui messaggi contati
+// per utenti distinti (chi conferma 3 messaggi vale 1, non 3).
+// reads = null → tracciamento letture non disponibile: 0 non letti.
+function withActivity(reports, comments, reactions, reads, userId) {
+  const lastRead = {}
+  for (const r of reads || []) lastRead[r.report_id] = r.last_read_at
+
+  const acc = {}
+  const accFor = id => acc[id] || (acc[id] = {
+    comment_count: 0,
+    unread_count: 0,
+    last_comment_at: null,
+    reactions: { utile: new Set(), confermo: new Set(), risolto: new Set() },
+  })
+
+  for (const c of comments) {
+    const a = accFor(c.report_id)
+    a.comment_count++
+    if (!a.last_comment_at || c.created_at > a.last_comment_at) a.last_comment_at = c.created_at
+    const read = lastRead[c.report_id]
+    if (reads && userId && c.user_id !== userId && (!read || new Date(c.created_at) > new Date(read))) {
+      a.unread_count++
+    }
+  }
+
+  for (const x of reactions) {
+    if (!x.comment_id) continue // 'grazie' a livello segnalazione: non è feedback sui messaggi
+    const set = accFor(x.report_id).reactions[x.type]
+    if (set) set.add(x.user_id || x.user_name)
+  }
+
+  return reports.map(r => {
+    const a = acc[r.id]
+    return {
+      ...r,
+      activity: a ? {
+        comment_count: a.comment_count,
+        unread_count: a.unread_count,
+        last_comment_at: a.last_comment_at,
+        reactions: { utile: a.reactions.utile.size, confermo: a.reactions.confermo.size, risolto: a.reactions.risolto.size },
+      } : {
+        comment_count: 0, unread_count: 0, last_comment_at: null,
+        reactions: { utile: 0, confermo: 0, risolto: 0 },
+      },
+    }
+  })
 }
 
 // ── API unificata (Supabase o localStorage) ──────────────
@@ -142,19 +193,33 @@ export const db = {
   },
 
   // ─── REPORTS ───
-  async getReports(filters = {}) {
+  // userId (opzionale): calcola i messaggi non letti per quell'utente
+  async getReports(filters = {}, userId = null) {
     if (supabase) {
       let query = supabase.from('reports').select('*, assigned_to_user:users!reports_assigned_to_fkey(name), created_by_user:users!reports_created_by_fkey(name)').order('created_at', { ascending: false })
       if (filters.status) query = query.eq('status', filters.status)
       if (filters.severity) query = query.eq('severity', filters.severity)
       if (filters.assigned_to) query = query.eq('assigned_to', filters.assigned_to)
       const { data } = await query
-      return data || []
+      const reports = data || []
+      if (reports.length === 0) return reports
+      const ids = reports.map(r => r.id)
+      const [c, x, rd] = await Promise.all([
+        supabase.from('comments').select('report_id, user_id, created_at').in('report_id', ids),
+        supabase.from('reactions').select('report_id, comment_id, user_id, type').in('report_id', ids),
+        userId
+          ? supabase.from('report_reads').select('report_id, last_read_at').eq('user_id', userId)
+          : Promise.resolve({ data: null, error: true }),
+      ])
+      return withActivity(reports, c.data || [], x.data || [], rd.error ? null : (rd.data || []), userId)
     }
     let reports = getStore(KEYS.reports)
     if (filters.status) reports = reports.filter(r => r.status === filters.status)
     if (filters.severity) reports = reports.filter(r => r.severity === filters.severity)
-    return reports
+    const comments = reports.flatMap(r => (r.comments || []).map(c => ({ ...c, report_id: r.id })))
+    const reactions = reports.flatMap(r => r.reactions || [])
+    const reads = userId ? getStore(KEYS.reads).filter(x => x.user_id === userId) : null
+    return withActivity(reports, comments, reactions, reads, userId)
   },
 
   async getReport(id) {
@@ -215,6 +280,48 @@ export const db = {
     reports[idx].comments = [...(reports[idx].comments || []), newComment]
     setStore(KEYS.reports, reports)
     return newComment
+  },
+
+  // ─── LETTURE ───
+  // Segna la segnalazione come letta: i commenti successivi a questo
+  // momento torneranno a contare come "non letti"
+  async markReportRead(reportId, userId) {
+    if (!userId) return
+    if (supabase) {
+      await supabase.from('report_reads').upsert(
+        { report_id: reportId, user_id: userId, last_read_at: new Date().toISOString() },
+        { onConflict: 'report_id,user_id' }
+      )
+      return
+    }
+    const reads = getStore(KEYS.reads).filter(x => !(x.report_id === reportId && x.user_id === userId))
+    reads.push({ report_id: reportId, user_id: userId, last_read_at: new Date().toISOString() })
+    setStore(KEYS.reads, reads)
+  },
+
+  // Totale messaggi non letti su tutte le segnalazioni (badge sul tab)
+  async getUnreadTotal(userId) {
+    if (!userId) return 0
+    if (supabase) {
+      const [c, rd] = await Promise.all([
+        supabase.from('comments').select('report_id, user_id, created_at'),
+        supabase.from('report_reads').select('report_id, last_read_at').eq('user_id', userId),
+      ])
+      if (rd.error) return 0
+      const lastRead = {}
+      for (const r of rd.data || []) lastRead[r.report_id] = r.last_read_at
+      return (c.data || []).filter(x =>
+        x.user_id !== userId && (!lastRead[x.report_id] || new Date(x.created_at) > new Date(lastRead[x.report_id]))
+      ).length
+    }
+    const lastRead = {}
+    for (const r of getStore(KEYS.reads)) {
+      if (r.user_id === userId) lastRead[r.report_id] = r.last_read_at
+    }
+    return getStore(KEYS.reports).reduce((n, rep) =>
+      n + (rep.comments || []).filter(c =>
+        c.user_id !== userId && (!lastRead[rep.id] || new Date(c.created_at) > new Date(lastRead[rep.id]))
+      ).length, 0)
   },
 
   // ─── REACTIONS ───

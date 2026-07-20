@@ -5,6 +5,7 @@ import { STATUS, SEVERITY, formatDate } from '../../lib/constants'
 import { Badge, Button, Modal, Input, Textarea, Select, EmptyState, Spinner } from '../../components/ui'
 import MediaCapture from '../../components/media/MediaCapture'
 import CommentSection from '../../components/reports/CommentSection'
+import ActivityChips from '../../components/reports/ActivityChips'
 import { Plus, Search, Filter, Eye, UserCheck } from 'lucide-react'
 
 export default function AdminReports() {
@@ -25,7 +26,7 @@ export default function AdminReports() {
 
   const load = async () => {
     setLoading(true)
-    const [r, u, m] = await Promise.all([db.getReports(), db.getUsers(), db.getMachines()])
+    const [r, u, m] = await Promise.all([db.getReports({}, user?.id), db.getUsers(), db.getMachines()])
     setReports(r)
     setUsers(u)
     setMachines(m)
@@ -129,6 +130,7 @@ export default function AdminReports() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden md:table-cell">Macchinario</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Stato</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">Gravità</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Attività</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden lg:table-cell">Assegnato a</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden md:table-cell">Data</th>
                 <th className="px-4 py-3"></th>
@@ -148,6 +150,9 @@ export default function AdminReports() {
                     </td>
                     <td className="px-4 py-3"><Badge {...status} /></td>
                     <td className="px-4 py-3 hidden sm:table-cell"><Badge {...severity} /></td>
+                    <td className="px-4 py-3">
+                      <ActivityChips activity={r.activity} />
+                    </td>
                     <td className="px-4 py-3 hidden lg:table-cell">
                       <span className="text-sm text-gray-400">{r.assigned_to_name || '—'}</span>
                     </td>
@@ -204,7 +209,8 @@ export default function AdminReports() {
       </Modal>
 
       {/* Detail Modal */}
-      <Modal open={!!selected} onClose={() => setSelected(null)} title={selected?.title} size="lg">
+      {/* Alla chiusura ricarica: il dettaglio ha azzerato i non letti */}
+      <Modal open={!!selected} onClose={() => { setSelected(null); load() }} title={selected?.title} size="lg">
         {selected && (
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2">
