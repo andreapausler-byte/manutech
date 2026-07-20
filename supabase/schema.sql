@@ -67,6 +67,18 @@ CREATE TABLE IF NOT EXISTS reactions (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ── LETTURE ─────────────────────────────────────────────────────
+-- Ultima visita di ogni utente al dettaglio di una segnalazione:
+-- i commenti più recenti di last_read_at contano come "non letti".
+-- Se hai già un database esistente, esegui solo questa sezione
+-- (tabella + indice + RLS in fondo al file).
+CREATE TABLE IF NOT EXISTS report_reads (
+  report_id UUID NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  last_read_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (report_id, user_id)
+);
+
 -- ── INDICI ──────────────────────────────────────────────────────
 CREATE INDEX idx_reports_status ON reports(status);
 CREATE INDEX idx_reports_severity ON reports(severity);
@@ -74,6 +86,7 @@ CREATE INDEX idx_reports_assigned ON reports(assigned_to);
 CREATE INDEX idx_reports_created ON reports(created_at DESC);
 CREATE INDEX idx_comments_report ON comments(report_id);
 CREATE INDEX idx_reactions_report ON reactions(report_id);
+CREATE INDEX idx_report_reads_user ON report_reads(user_id);
 -- Una sola reazione per utente/tipo su ogni messaggio (o segnalazione)
 CREATE UNIQUE INDEX idx_reactions_unique_comment ON reactions(comment_id, user_id, type) WHERE comment_id IS NOT NULL;
 CREATE UNIQUE INDEX idx_reactions_unique_report ON reactions(report_id, user_id, type) WHERE comment_id IS NULL;
@@ -84,6 +97,7 @@ ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE machines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE report_reads ENABLE ROW LEVEL SECURITY;
 
 -- Policy: tutti gli utenti autenticati possono leggere
 CREATE POLICY "Users can read all" ON users FOR SELECT TO authenticated USING (true);
@@ -91,6 +105,7 @@ CREATE POLICY "Reports can read all" ON reports FOR SELECT TO authenticated USIN
 CREATE POLICY "Comments can read all" ON comments FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Machines can read all" ON machines FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Reactions can read all" ON reactions FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Reads can read all" ON report_reads FOR SELECT TO authenticated USING (true);
 
 -- Policy: inserimento
 CREATE POLICY "Users can insert own" ON users FOR INSERT TO authenticated WITH CHECK (true);
@@ -98,9 +113,11 @@ CREATE POLICY "Users can create reports" ON reports FOR INSERT TO authenticated 
 CREATE POLICY "Users can add comments" ON comments FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "Admins can create machines" ON machines FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "Users can add reactions" ON reactions FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Users can track reads" ON report_reads FOR INSERT TO authenticated WITH CHECK (true);
 
 -- Policy: aggiornamento
 CREATE POLICY "Admins and techs can update reports" ON reports FOR UPDATE TO authenticated USING (true);
+CREATE POLICY "Users can update own reads" ON report_reads FOR UPDATE TO authenticated USING (true);
 CREATE POLICY "Admins can update machines" ON machines FOR UPDATE TO authenticated USING (true);
 
 -- Policy: eliminazione (solo admin)

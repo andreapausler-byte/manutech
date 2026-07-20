@@ -14,7 +14,9 @@ export default function CommentSection({ report, user, variant = 'page' }) {
   useEffect(() => {
     db.getComments(report.id).then(setComments)
     db.getReactions(report.id).then(setReactions)
-  }, [report.id])
+    // Aprire il thread azzera i "non letti" nelle liste
+    db.markReportRead(report.id, user.id)
+  }, [report.id, user.id])
 
   const addComment = async () => {
     if (!newComment.trim()) return
